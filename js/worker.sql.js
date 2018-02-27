@@ -42,22 +42,35 @@ if (typeof importScripts === 'function') {
     data = event['data'];
     switch (data != null ? data['action'] : void 0) {
       case 'open':
-        buff = data['buffer'];
+        buff = data['params']['buffer'];
         createDb((buff ? new Uint8Array(buff) : void 0));
         return postMessage({
           'id': data['id'],
-          'ready': true
+          'result': {
+            'ready': true
+          }
         });
       case 'exec':
         if (db === null) {
           createDb();
         }
-        if (!data['sql']) {
+        if (!data['params']['sql']) {
           throw 'exec: Missing query string';
         }
         return postMessage({
           'id': data['id'],
-          'results': db.exec(data['sql'])
+          'result': db.exec(data['params']['sql'])
+        });
+      case 'run':
+        if (db === null) {
+          createDb();
+        }
+        if (!data['params']['sql']) {
+          throw 'run: Missing query string';
+        }
+        return postMessage({
+          'id': data['id'],
+          'result': db.run(data['params']['sql'])
         });
       case 'each':
         if (db === null) {
@@ -66,22 +79,42 @@ if (typeof importScripts === 'function') {
         callback = function(row) {
           return postMessage({
             'id': data['id'],
-            'row': row,
-            'finished': false
+            'result': {
+              'row': row,
+              'finished': false
+            }
           });
         };
         done = function() {
           return postMessage({
             'id': data['id'],
-            'finished': true
+            'result': {
+              'finished': true
+            }
           });
         };
-        return db.each(data['sql'], data['params'], callback, done);
+        return db.each(data['params']['sql'], data['params']['params'], callback, done);
+      case 'create_function':
+        if (db === null) {
+          createDb();
+        }
+
+        var result = db.create_function(
+          data["params"]["name"],
+          Function.apply({}, data["params"]["parts"])
+        );
+        return postMessage({
+          'id' : data['id'],
+          'result' : result
+        });
+      break;
       case 'export':
         buff = db["export"]();
         result = {
           'id': data['id'],
-          'buffer': buff
+          'result': {
+            'buffer': buff
+          }
         };
         try {
           return postMessage(result, [result]);
@@ -91,7 +124,12 @@ if (typeof importScripts === 'function') {
         }
         break;
       case 'close':
-        return db != null ? db.close() : void 0;
+        var result = db != null ? db.close() : void 0;
+        return postMessage({
+          id : data['id'],
+          result : { code : result }
+        });
+        return result;
       default:
         throw new 'Invalid action : ' + (data != null ? data['action'] : void 0);
     }
